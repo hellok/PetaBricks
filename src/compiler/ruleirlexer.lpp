@@ -1,0 +1,158 @@
+/*****************************************************************************
+ *  Copyright (C) 2008-2011 Massachusetts Institute of Technology            *
+ *                                                                           *
+ *  Permission is hereby granted, free of charge, to any person obtaining    *
+ *  a copy of this software and associated documentation files (the          *
+ *  "Software"), to deal in the Software without restriction, including      *
+ *  without limitation the rights to use, copy, modify, merge, publish,      *
+ *  distribute, sublicense, and/or sell copies of the Software, and to       *
+ *  permit persons to whom the Software is furnished to do so, subject       *
+ *  to the following conditions:                                             *
+ *                                                                           *
+ *  The above copyright notice and this permission notice shall be included  *
+ *  in all copies or substantial portions of the Software.                   *
+ *                                                                           *
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY                *
+ *  KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE               *
+ *  WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND      *
+ *  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE   *
+ *  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION   *
+ *  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION    *
+ *  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE           *
+ *                                                                           *
+ *  This source code is part of the PetaBricks project:                      *
+ *    http://projects.csail.mit.edu/petabricks/                              *
+ *                                                                           *
+ *****************************************************************************/
+%option nostdinit
+%option noyywrap
+%option noyy_push_state
+%option noyy_pop_state
+%option noyy_top_state
+%option nounput
+%option prefix="ruleir"
+%option outfile="lex.yy.c"
+%option bison-bridge
+%option bison-locations
+%option yylineno
+
+%{
+
+#include "ruleir.h"
+#include "formula.h"
+#include "ruleirparser.h"
+
+#include "common/jassert.h"
+#include "common/jconvert.h"
+#include "common/srcpos.h"
+
+#include <stdio.h>
+
+#define yylval ruleirlval
+
+#include "ruleirparser.h"
+
+void ruleirparser_addRefPoolItem(jalib::JRefCounted* i);//ruleirparser.ypp
+
+
+static const char* allocPoolString(const char* str){
+  struct StrStorage : public std::string, public jalib::JRefCounted {
+    StrStorage(const char* s) : std::string(s) {}
+  };
+  StrStorage* s = new StrStorage(str);
+  ruleirparser_addRefPoolItem(s);
+  return s->c_str();
+}
+
+std::string ruleirfilename;
+int ruleircolno=0;
+int ruleirlastlineno=-1;
+
+inline bool isNum(char c) { return c>='0' && c<='9'; }
+
+static void handleCppLine(const char* s){
+  const char* n_begin = s+2;
+  const char* n_end = n_begin;
+  while(*n_end>='0' && *n_end<='9') ++n_end;
+  const char* filename=n_end+1;
+  std::string n(n_begin, n_end);
+  //JTRACE("LINENO")(n)(filename);
+  ruleirlineno = jalib::StringToInt(n)-1;
+  ruleirfilename = filename;
+}
+
+#define YY_USER_ACTION \
+  yylval->str=allocPoolString(yytext);                              \
+  SRCPOS_FILL(*yylloc, ruleirfilename, ruleirlineno, ruleirlastlineno, ruleircolno)
+
+
+//#define YY_DECL int yylex()
+
+%}
+
+%x output
+
+PASS_CHARS [();:?{}]
+OPS [,=&|!<>^*/[\]+%.-]
+WS [ \r\n\t]
+STR ["]([^"]+|[\\].)*["]
+CHAR ['][\\]?.[']
+
+%%
+
+<INITIAL>{
+  {WS}+                       /* whitespace */
+  "if"                        return TOK_IF;
+  "then"                      return TOK_THEN;
+  "else"                      return TOK_ELSE;
+  "for"                       return TOK_FOR;
+  "for_enough"                return TOK_FORENOUGH;
+  "while"                     return TOK_WHILE;
+  "do"                        return TOK_DO;
+  "return"                    return TOK_RETURN;
+  "break"                     return TOK_BREAK;
+  "switch"                    return TOK_SWITCH;
+  "case"                      return TOK_CASE;
+  "default"                   return TOK_DEFAULT;
+  "spawn"                     return TOK_SPAWN;
+  {PASS_CHARS}                return yytext[0];
+  {OPS}"="                    return TOK_OP;
+  "->"                        return TOK_OP;
+  "[]"                        return TOK_OP;
+  ">>="                       return TOK_OP;
+  "<<="                       return TOK_OP;
+  ">>"                        return TOK_OP;
+  "<<"                        return TOK_OP;
+  "&&"                        return TOK_OP;
+  "||"                        return TOK_OP;
+  "++"                        return TOK_OP;
+  "--"                        return TOK_OP;
+  "::"                        return TOK_OP;
+  {OPS}                       return TOK_OP;
+  {STR}                       return TOK_LIT;
+  {CHAR}                      return TOK_LIT;
+  [0-9]+                      return TOK_LIT;
+  [0-9]+[.][0-9]+             return TOK_LIT;
+  [a-zA-Z:_][:a-zA-Z0-9_]*    return TOK_IDENT;
+  [%][{]([^%]+|[%][^}])*[%][}] return TOK_RAW;
+  ^[#][ ][0-9]+[ ][^\n]*      handleCppLine(yytext);
+  .                   JWARNING(false)(yytext).Text("Unhanded input");
+}
+
+%%
+
+void _ruleirlexer_scan_string( const std::string& str, const jalib::SrcPosTaggable* pos) {
+  if(pos!=0 && pos->srcPosFirst()) {
+    jalib::FileLineCol t = pos->srcPosFirst()->first();
+    ruleirfilename = t.filename;
+    ruleirlineno   = t.line;
+    ruleircolno    = t.column;
+  }else{
+    ruleirfilename = "";
+    ruleirlineno   = 0 ;
+    ruleircolno    = 0;
+  }
+  ruleirlastlineno=-1;
+  ruleir_scan_bytes(str.c_str(), str.length());
+}
+

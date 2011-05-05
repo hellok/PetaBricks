@@ -1,0 +1,7 @@
+#ifndef HELMHOLTZ3DCONFIG_H
+#define HELMHOLTZ3DCONFIG_H
+
+#define HELMHOLTZ3D_BINS 1, 3, 5, 7, 9
+#define HELMHOLTZ3D_GENERATOR UniformHelmholtz3DGenerator
+
+#endif // HELMHOLTZ3DCONFIG_H

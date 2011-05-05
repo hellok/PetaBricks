@@ -1,0 +1,58 @@
+#ifndef QRTD_PBCC
+#define QRTD_PBCC
+
+%{
+
+extern "C" void dsteqr_(char *compz, int *n, double *D, double *E, double *Z, int *ldz, double *work, int *info);
+
+
+%}
+
+#include "../simple/copy.pbcc"
+#include "../simple/transpose.pbcc"
+
+// Find eigenvalues and eigenvectors of tridiagonal matrix by LAPACK QR iteration routines
+// note output is Transposed because of row-major and column major difference for LAPACK and PetaBricks
+transform QRTDsub
+from Subdiag[n-1]
+to Eigenvalue[n], Eigenvector[n,n]
+{
+
+  to (Eigenvalue Eig, Eigenvector Vec) from (Subdiag Ein)
+  {
+
+
+    char compz='I';
+    int size=n, lwork=2*n-2, info=0, nsquared=n*n;
+
+    // allocate and initialize matrices
+    double *Z = Vec.base();
+    double *D = Eig.base();
+    double *E = Ein.storage()->data();
+    double *work = new double[1];
+
+    if (lwork > 1) { work = new double[lwork];}
+    dsteqr_(&compz, &size, D, E, Z, &size, work, &info);
+
+    delete [] work;
+  }
+
+}
+
+transform QRTD
+from Diag[n], Subdiag[n-1]
+//through Eigvectemp[n,n]
+to Eigenvalue[n], Eigenvector[n,n]
+{
+
+  to (Eigenvalue Eig, Eigenvector Vec) from (Diag Din, Subdiag Ein)
+  {
+
+	Copy1D(Eig, Din);
+	QRTDsub(Eig, Vec, Ein);
+	//Transpose(Vec,Vtemp);
+  }
+
+}
+
+#endif // QRTD_PBCC

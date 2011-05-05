@@ -1,0 +1,72 @@
+#ifndef BISECTIONTD_PBCC
+#define BISECTIONTD_PBCC
+
+%{
+
+
+
+extern "C" void dstebz_(char *range, char *order, int *n, double *vl, double *vu, int *il, int *iu, double *abstol, double *d, double *e, int *m, int *nsplit, double *w, int *iblock, int *isplit, double *work, int *iwork, int *info);
+
+extern "C" void dstein_(int *n, double *d, double *e, int *m, double *w, int *iblock, int *isplit, double *z, int *ldz, double *work, int *iwork, int *ifail, int *info);
+
+
+%}
+
+#include "../simple/transpose.pbcc"
+
+// Find eigenvalues and eigenvectors of input matrix IN (symmetric) by LAPACK Bisection routine
+// note output is Transposed because of row-major and column major difference for LAPACK and PetaBricks
+transform BisectionTD
+from Diag[n], Subdiag[n-1]
+//through Eigvectemp[n,n]
+to Eigenvalue[n], Eigenvector[n,n]
+{
+
+  to (Eigenvalue Eig, Eigenvector Vec) from (Diag Din, Subdiag Ein)
+  {
+    char range = 'A';
+    char order = 'B';
+    int size=n;
+    int info = 0;
+    int il;
+    int iu;
+    int m;
+    int nsplit;
+    int nsquared=n*n;
+    double vl;
+    double vu;
+    double abstol=0;
+
+    // allocate and initialize matrices
+    double *Z = Vec.base();
+    double *D = Din.storage()->data();
+    double *E = Ein.storage()->data();
+    double *work = new double[4*size];
+    int *iwork = new int[3*size];
+    double *W = Eig.base();
+    int *iblock = new int[size];
+    int *isplit = new int[size];
+    int *ifail = new int[size];
+
+    // call LAPACK bisection routine for tridiagonal matrix
+    dstebz_(&range, &order, &size, &vl, &vu, &il, &iu, &abstol, D, E, &m, &nsplit, W, iblock, isplit, work, iwork, &info);
+
+    // call LAPACK dstein routine for eigenvectors
+    delete [] work;
+    work = new double[5*n];
+    delete [] iwork;
+    iwork = new int[n];
+    dstein_(&size, D, E, &size, W, iblock, isplit, Z, &size, work, iwork, ifail, &info);
+
+    //Transpose(VecOut,Vec);
+
+    delete [] work;
+    delete [] iwork;
+    delete [] iblock;
+    delete [] isplit;
+    delete [] ifail;
+  }
+
+}
+
+#endif // BISECTIONTD_PBCC

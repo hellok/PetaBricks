@@ -1,0 +1,7 @@
+#ifndef POISSON2DCONFIG_H
+#define POISSON2DCONFIG_H
+
+#define POISSON2D_BINS 1, 3, 5, 7, 9
+#define POISSON2D_GENERATOR UniformPoisson2DGenerator
+
+#endif // POISSON2DCONFIG_H
